@@ -1,0 +1,303 @@
+{
+  "_description": "Agent-friendly metadata for RBY1 teleoperation HDF5 datasets. Describes the robomimic-style HDF5 layout produced by RobomimicHDF5Writer from TeleopDataCollector.",
+  "_authors": ["Chuizheng Kong", "Yunho Cho"],
+  "_created": "2025-07-29",
+
+  "robot": {
+    "name": "RBY1",
+    "model": "Model-M",
+    "total_joint_dim": 26,
+    "joint_groups": {
+      "base":  { "indices": [0, 1, 2, 3],                     "dim": 4,  "description": "Mobile base joints" },
+      "torso": { "indices": [4, 5, 6, 7, 8, 9],               "dim": 6,  "description": "Torso/waist joints" },
+      "right_arm": { "indices": [10, 11, 12, 13, 14, 15, 16],  "dim": 7,  "description": "Right arm joints (7-DOF)" },
+      "left_arm":  { "indices": [17, 18, 19, 20, 21, 22, 23],  "dim": 7,  "description": "Left arm joints (7-DOF)" },
+      "head":  { "indices": [24, 25],                          "dim": 2,  "description": "Head pan/tilt joints" }
+    },
+    "hands": {
+      "type": "XHand",
+      "qpos_dim": 12,
+      "finger_dim": 12,
+      "tactile_force_dim": 1800,
+      "tactile_force_layout": "5 fingers x 120 taxels x 3 axes (force xyz)",
+      "tactile_temp_dim": 100,
+      "tactile_temp_layout": "5 fingers x 20 thermistors"
+    }
+  },
+
+  "collection": {
+    "method": "WebRTC body pose teleoperation with SEW (Shoulder-Elbow-Wrist) geometric IK solver",
+    "control_frequency_hz": 30.0,
+    "ik_solver": "RBY1SEWSolver",
+    "mujoco_controller": "RBY1MuJoCoController",
+    "hand_retargeting": "XHand retargeting from human finger pose via YAML config",
+    "camera": {
+      "device": "Aria Gen2 smart glasses",
+      "raw_resolution": [720, 1280, 3],
+      "stored_resolution_default": [640, 640, 3],
+      "stored_resolution_constant": [768, 768, 3],
+      "note": "Raw Aria RGB frames are resized to stored_resolution via cv2.INTER_LINEAR before saving. The actual stored resolution depends on the aria_resolution parameter passed to TeleopDataCollector."
+    },
+    "base_control": "Incremental SE(2) commands (delta_x, delta_y, delta_yaw) computed from body pose relative to initial calibration frame"
+  },
+
+  "hdf5_structure": {
+    "format": "robomimic-style",
+    "root_group": "data",
+    "root_attrs": {
+      "total": { "dtype": "int", "description": "Total number of samples across all demos" },
+      "env_args": { "dtype": "json_string", "description": "JSON-encoded environment arguments", "default_value": { "env_name": "RBY1Teleop", "env_type": "robosuite", "env_kwargs": {} } }
+    },
+
+    "demo_group": {
+      "naming": "demo_0, demo_1, ..., demo_N",
+      "attrs": {
+        "num_samples": { "dtype": "int", "description": "Number of timesteps in this episode (N)" }
+      },
+
+      "obs": {
+        "_description": "Observation group: all proprioceptive state, hand state, timestamps, and optional image data.",
+        "robot0_joint_pos": {
+          "shape": ["N", 26],
+          "dtype": "float32",
+          "unit": "radians",
+          "description": "Full robot joint positions from hardware. Order: base(4) + torso(6) + right_arm(7) + left_arm(7) + head(2).",
+          "index_map": {
+            "base": [0, 1, 2, 3],
+            "torso": [4, 5, 6, 7, 8, 9],
+            "right_arm": [10, 11, 12, 13, 14, 15, 16],
+            "left_arm": [17, 18, 19, 20, 21, 22, 23],
+            "head": [24, 25]
+          }
+        },
+        "robot0_joint_vel": {
+          "shape": ["N", 26],
+          "dtype": "float32",
+          "unit": "radians/sec",
+          "description": "Full robot joint velocities from hardware. Same ordering as robot0_joint_pos.",
+          "index_map": {
+            "base": [0, 1, 2, 3],
+            "torso": [4, 5, 6, 7, 8, 9],
+            "right_arm": [10, 11, 12, 13, 14, 15, 16],
+            "left_arm": [17, 18, 19, 20, 21, 22, 23],
+            "head": [24, 25]
+          }
+        },
+        "robot_ts": {
+          "shape": ["N"],
+          "dtype": "float64",
+          "unit": "seconds (epoch)",
+          "description": "Timestamp of each robot state reading (time.time() at read)."
+        },
+        "hand_left_qpos": {
+          "shape": ["N", 12],
+          "dtype": "float32",
+          "unit": "radians",
+          "description": "Left XHand joint positions (12 DOF). Actual hand hardware readings."
+        },
+        "hand_right_qpos": {
+          "shape": ["N", 12],
+          "dtype": "float32",
+          "unit": "radians",
+          "description": "Right XHand joint positions (12 DOF). Actual hand hardware readings."
+        },
+        "hand_left_cmd_qpos": {
+          "shape": ["N", 12],
+          "dtype": "float32",
+          "unit": "radians",
+          "description": "Left XHand commanded joint positions (from retargeting). This is the action target sent to the hand controller."
+        },
+        "hand_right_cmd_qpos": {
+          "shape": ["N", 12],
+          "dtype": "float32",
+          "unit": "radians",
+          "description": "Right XHand commanded joint positions (from retargeting). This is the action target sent to the hand controller."
+        },
+        "hand_left_finger_pos": {
+          "shape": ["N", 12],
+          "dtype": "float32",
+          "description": "Left hand finger position sensor readings (12-dim)."
+        },
+        "hand_right_finger_pos": {
+          "shape": ["N", 12],
+          "dtype": "float32",
+          "description": "Right hand finger position sensor readings (12-dim)."
+        },
+        "hand_left_finger_raw_pos": {
+          "shape": ["N", 12],
+          "dtype": "float32",
+          "description": "Left hand raw (unprocessed) finger position sensor readings."
+        },
+        "hand_right_finger_raw_pos": {
+          "shape": ["N", 12],
+          "dtype": "float32",
+          "description": "Right hand raw (unprocessed) finger position sensor readings."
+        },
+        "hand_left_tactile_force": {
+          "shape": ["N", 1800],
+          "dtype": "float32",
+          "unit": "force (N or raw)",
+          "description": "Left hand tactile force readings. Layout: 5 fingers x 120 taxels x 3 axes = 1800, stored flattened."
+        },
+        "hand_right_tactile_force": {
+          "shape": ["N", 1800],
+          "dtype": "float32",
+          "unit": "force (N or raw)",
+          "description": "Right hand tactile force readings. Same layout as hand_left_tactile_force."
+        },
+        "hand_left_tactile_temp": {
+          "shape": ["N", 100],
+          "dtype": "float32",
+          "unit": "temperature (raw)",
+          "description": "Left hand tactile temperature readings. Layout: 5 fingers x 20 thermistors = 100, stored flattened."
+        },
+        "hand_right_tactile_temp": {
+          "shape": ["N", 100],
+          "dtype": "float32",
+          "unit": "temperature (raw)",
+          "description": "Right hand tactile temperature readings. Same layout as hand_left_tactile_temp."
+        },
+        "eef_right_proprio": {
+          "shape": ["N", 16],
+          "dtype": "float32",
+          "description": "Right end-effector proprioceptive pose as a flattened 4x4 homogeneous transformation matrix (row-major). Represents the current FK-derived EEF pose in world frame."
+        },
+        "eef_left_proprio": {
+          "shape": ["N", 16],
+          "dtype": "float32",
+          "description": "Left end-effector proprioceptive pose as a flattened 4x4 homogeneous transformation matrix (row-major). Same convention as eef_right_proprio."
+        },
+        "hand_ts_left": {
+          "shape": ["N"],
+          "dtype": "float64",
+          "unit": "seconds (epoch)",
+          "description": "Timestamp of each left hand reading."
+        },
+        "hand_ts_right": {
+          "shape": ["N"],
+          "dtype": "float64",
+          "unit": "seconds (epoch)",
+          "description": "Timestamp of each right hand reading."
+        },
+        "aria_ts": {
+          "shape": ["N"],
+          "dtype": "float64",
+          "unit": "seconds (epoch or device time)",
+          "description": "Aria camera timestamp for each frame. Zero if Aria streaming was not active."
+        },
+        "cmd_ts": {
+          "shape": ["N"],
+          "dtype": "float64",
+          "unit": "seconds (epoch)",
+          "description": "Timestamp when the IK command was computed and sent to the robot."
+        },
+        "aria_image": {
+          "shape": ["N", "H", "W", 3],
+          "dtype": "uint8",
+          "compression": "gzip",
+          "optional": true,
+          "description": "Aria RGB egocentric camera images. Only present if --aria_streaming was enabled during collection. Resolution depends on aria_resolution parameter (default 640x640 or 768x768)."
+        }
+      },
+
+      "actions": {
+        "_description": "Action group: multiple pre-composed action representations for different policy use cases. All are float32.",
+
+        "joint": {
+          "shape": ["N", 49],
+          "dtype": "float32",
+          "description": "Full-body joint-space action including both arms, torso, head, base velocity, and both hand commands.",
+          "composition": [
+            { "name": "q_goal_left",         "slice": [0, 7],   "dim": 7,  "unit": "radians", "description": "Left arm joint position targets" },
+            { "name": "q_goal_right",        "slice": [7, 14],  "dim": 7,  "unit": "radians", "description": "Right arm joint position targets" },
+            { "name": "q_goal_torso",        "slice": [14, 20], "dim": 6,  "unit": "radians", "description": "Torso joint position targets" },
+            { "name": "q_goal_head",         "slice": [20, 22], "dim": 2,  "unit": "radians", "description": "Head joint position targets" },
+            { "name": "delta_x",             "slice": [22, 23], "dim": 1,  "unit": "meters",  "description": "Incremental base X displacement" },
+            { "name": "delta_y",             "slice": [23, 24], "dim": 1,  "unit": "meters",  "description": "Incremental base Y displacement" },
+            { "name": "delta_yaw",           "slice": [24, 25], "dim": 1,  "unit": "radians", "description": "Incremental base yaw rotation" },
+            { "name": "hand_left_cmd_qpos",  "slice": [25, 37], "dim": 12, "unit": "radians", "description": "Left hand commanded joint positions" },
+            { "name": "hand_right_cmd_qpos", "slice": [37, 49], "dim": 12, "unit": "radians", "description": "Right hand commanded joint positions" }
+          ]
+        },
+        "eef": {
+          "shape": ["N", 56],
+          "dtype": "float32",
+          "description": "End-effector space action: commanded EEF poses (as flattened 4x4 matrices) plus hand commands.",
+          "composition": [
+            { "name": "eef_right_cmd",       "slice": [0, 16],  "dim": 16, "description": "Right EEF commanded pose, flattened 4x4 homogeneous matrix (row-major)" },
+            { "name": "eef_left_cmd",        "slice": [16, 32], "dim": 16, "description": "Left EEF commanded pose, flattened 4x4 homogeneous matrix (row-major)" },
+            { "name": "hand_left_cmd_qpos",  "slice": [32, 44], "dim": 12, "unit": "radians", "description": "Left hand commanded joint positions" },
+            { "name": "hand_right_cmd_qpos", "slice": [44, 56], "dim": 12, "unit": "radians", "description": "Right hand commanded joint positions" }
+          ]
+        },
+        "joint_arm": {
+          "shape": ["N", 14],
+          "dtype": "float32",
+          "description": "Arm-only joint-space action (no torso, head, base, or hands).",
+          "composition": [
+            { "name": "q_goal_left",  "slice": [0, 7],  "dim": 7, "unit": "radians", "description": "Left arm joint position targets" },
+            { "name": "q_goal_right", "slice": [7, 14], "dim": 7, "unit": "radians", "description": "Right arm joint position targets" }
+          ]
+        },
+        "joint_arm_hand": {
+          "shape": ["N", 38],
+          "dtype": "float32",
+          "description": "Arm + hand joint-space action (no torso, head, or base).",
+          "composition": [
+            { "name": "q_goal_left",         "slice": [0, 7],   "dim": 7,  "unit": "radians", "description": "Left arm joint position targets" },
+            { "name": "q_goal_right",        "slice": [7, 14],  "dim": 7,  "unit": "radians", "description": "Right arm joint position targets" },
+            { "name": "hand_left_cmd_qpos",  "slice": [14, 26], "dim": 12, "unit": "radians", "description": "Left hand commanded joint positions" },
+            { "name": "hand_right_cmd_qpos", "slice": [26, 38], "dim": 12, "unit": "radians", "description": "Right hand commanded joint positions" }
+          ]
+        },
+        "joint_arm_head_torso_base": {
+          "shape": ["N", 25],
+          "dtype": "float32",
+          "description": "Full upper-body + base action without hand commands.",
+          "composition": [
+            { "name": "q_goal_left",  "slice": [0, 7],   "dim": 7, "unit": "radians", "description": "Left arm joint position targets" },
+            { "name": "q_goal_right", "slice": [7, 14],  "dim": 7, "unit": "radians", "description": "Right arm joint position targets" },
+            { "name": "q_goal_torso", "slice": [14, 20], "dim": 6, "unit": "radians", "description": "Torso joint position targets" },
+            { "name": "q_goal_head",  "slice": [20, 22], "dim": 2, "unit": "radians", "description": "Head joint position targets" },
+            { "name": "delta_x",      "slice": [22, 23], "dim": 1, "unit": "meters",  "description": "Incremental base X displacement" },
+            { "name": "delta_y",      "slice": [23, 24], "dim": 1, "unit": "meters",  "description": "Incremental base Y displacement" },
+            { "name": "delta_yaw",    "slice": [24, 25], "dim": 1, "unit": "radians", "description": "Incremental base yaw rotation" }
+          ]
+        }
+      },
+
+      "rewards": {
+        "shape": ["N"],
+        "dtype": "float32",
+        "description": "Reward signal per timestep. Currently always zeros (teleoperation data, no reward defined)."
+      },
+      "dones": {
+        "shape": ["N"],
+        "dtype": "float32",
+        "description": "Done flag per timestep. Currently always zeros (episode boundaries defined by demo group, not by done flags)."
+      }
+    }
+  },
+
+  "file_naming": {
+    "pattern": "{dataset_name}_{YYYYMMDD_HHMMSS}.hdf5",
+    "example": "fix_head_base_20250729_143052.hdf5",
+    "description": "Files are named with the --dataset_name argument followed by a datetime stamp. Saved to --dataset_path directory."
+  },
+
+  "timestamps_and_synchronization": {
+    "note": "Robot state, hand state, Aria images, and IK commands are recorded at different actual rates and may have small timing offsets. All timestamps are epoch seconds (time.time()) except aria_ts which may use device time.",
+    "robot_ts": "When robot_state.position was read from hardware",
+    "cmd_ts": "When the IK solution was computed and the command was sent",
+    "hand_ts_left": "When left hand state was last read",
+    "hand_ts_right": "When right hand state was last read",
+    "aria_ts": "Aria device timestamp for the corresponding RGB frame (0.0 if streaming disabled)"
+  },
+
+  "usage_notes": {
+    "obs_for_policy": "Typical policy observations: robot0_joint_pos (or subsets via index_map), hand_left_qpos, hand_right_qpos, eef_right_proprio, eef_left_proprio, and optionally aria_image.",
+    "action_spaces": "Choose action representation based on task: 'joint_arm' for arm-only tasks, 'joint_arm_hand' for manipulation with dexterous hands, 'joint' for full-body control, 'eef' for Cartesian-space policies.",
+    "zero_padding": "If a sensor was unavailable during recording (e.g., no hand connected, no Aria streaming), the corresponding arrays are zero-filled. Check timestamps to verify data validity.",
+    "buffer_size": "Default ring buffer is 6000 samples (~200s at 30Hz). Episodes longer than buffer_size will lose the oldest samples."
+  }
+}
