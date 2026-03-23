@@ -115,10 +115,13 @@ def main():
 
     rgba_backup = push_robot_alpha(model, args.robot_alpha)
     try:
-        # Closure to populate any MjvScene with trajectory geoms
+        # Offscreen Renderer.scene includes the robot after update_scene; user_scn does not.
         sub = args.subsample
-        def populate_scene(scn):
-            add_all_trajectories(scn, trajectories, subsample=sub)
+
+        def populate_scene(scn, *, clear_scene: bool = True):
+            add_all_trajectories(
+                scn, trajectories, subsample=sub, clear_scene=clear_scene,
+            )
 
         # ── Save PNGs ──
         hdf5_stem = Path(args.hdf5_file).stem
@@ -127,7 +130,12 @@ def main():
             else Path(args.hdf5_file).parent / "traj_viz" / hdf5_stem / args.demo_key
         )
         print(f"Saving screenshots → {out_dir}/")
-        save_all_views(model, data, populate_scene, out_dir)
+        save_all_views(
+            model,
+            data,
+            lambda scn: populate_scene(scn, clear_scene=False),
+            out_dir,
+        )
 
         # ── Interactive viewer ──
         if not args.no_interactive:

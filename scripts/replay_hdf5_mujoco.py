@@ -1,10 +1,12 @@
 """
 Replay recorded HDF5 teleoperation data in MuJoCo viewer.
-Self-contained: requires only h5py, numpy, and mujoco (no project dependencies).
 
 Supports two replay modes:
   - obs:    kinematic replay from recorded joint positions (faithful to hardware)
   - action: physics-based replay from recorded action commands
+
+By default draws a **growing FK EEF trajectory** (from recorded joint_pos) on top of the
+robot (same color scheme as plot_traj_1_demo.py). Requires repo ``utils/`` on PYTHONPATH.
 
 Controls:
   SPACE  pause / resume
@@ -18,6 +20,7 @@ Author: Chuizheng Kong, Yunho Cho
 """
 
 import argparse
+import sys
 import time
 import numpy as np
 from pathlib import Path
@@ -27,6 +30,16 @@ import mujoco
 import mujoco.viewer
 
 _HERE = Path(__file__).parent
+_REPO = _HERE.parent
+sys.path.insert(0, str(_REPO))
+
+from utils.plot_action_traj_in_mujoco import (
+    add_all_trajectories,
+    compute_fk_trajectories,
+    pop_robot_alpha,
+    push_robot_alpha,
+)
+
 _ASSETS = _HERE.parent / "assets"
 _XML = _ASSETS / "rby1_with_xhand" / "model_v1.3_xhand_act.xml"
 
@@ -201,6 +214,28 @@ def main():
              "'action' = physics replay from recorded action commands",
     )
     parser.add_argument("--xml", type=str, default=None, help="Override MuJoCo XML model path")
+    parser.add_argument(
+        "--no_eef_traj",
+        action="store_true",
+        help="Disable EEF trajectory overlay (plain replay)",
+    )
+    parser.add_argument(
+        "--all_links",
+        action="store_true",
+        help="Overlay all arm-link trajectories (default: EEF paths only)",
+    )
+    parser.add_argument(
+        "--subsample",
+        type=int,
+        default=3,
+        help="Trajectory geometry: draw every N-th frame (default 3)",
+    )
+    parser.add_argument(
+        "--robot_alpha",
+        type=float,
+        default=1.0,
+        help="Multiply geom alpha so the trail reads over the robot (0–1, default 0.62)",
+    )
     args = parser.parse_args()
 
     # ── Load MuJoCo model ──
@@ -273,91 +308,134 @@ def main():
 
     apply_frame = apply_obs_frame if args.mode == "obs" else apply_action_frame
 
+    # FK trajectories from recorded joint_pos (shown as growing overlay; independent of action-mode physics)
+    print("Computing FK trajectories for overlay...")
+    trajectories = compute_fk_trajectories(
+        model,
+        data,
+        demo.robot_pos,
+        demo.hand_left_qpos,
+        demo.hand_right_qpos,
+    )
+    if not args.all_links:
+        trajectories = {k: v for k, v in trajectories.items() if "eef" in k}
+    apply_frame(0)
+
+    rgba_backup = None
+    if not args.no_eef_traj:
+        rgba_backup = push_robot_alpha(model, args.robot_alpha)
+
     print(
         f"\nReplay mode: {args.mode} | speed: {speed:.1f}x | "
         f"frames: {demo.num_samples} | loop: {args.loop}"
+        + ("" if args.no_eef_traj else " | EEF trajectory overlay: ON")
     )
     print("Controls: SPACE=pause  R=restart  [/]=speed  .=step  Q=quit\n")
 
-    with mujoco.viewer.launch_passive(
-        model=model,
-        data=data,
-        show_left_ui=False,
-        show_right_ui=False,
-        key_callback=key_cb,
-    ) as viewer:
-        viewer.cam.distance = 3.0
-        viewer.cam.azimuth = 180
-        viewer.cam.elevation = -15
-        viewer.cam.lookat[:] = [0, 0, 1.0]
+    try:
+        with mujoco.viewer.launch_passive(
+            model=model,
+            data=data,
+            show_left_ui=False,
+            show_right_ui=False,
+            key_callback=key_cb,
+        ) as viewer:
+            viewer.cam.distance = 3.0
+            viewer.cam.azimuth = 180
+            viewer.cam.elevation = -15
+            viewer.cam.lookat[:] = [0, 0, 1.0]
 
-        apply_frame(0)
-        viewer.sync()
+            last_applied = 0
 
-        while viewer.is_running():
-            loop_start = time.time()
+            def refresh_traj_overlay():
+                if args.no_eef_traj:
+                    return
+                add_all_trajectories(
+                    viewer.user_scn,
+                    trajectories,
+                    subsample=args.subsample,
+                    end_idx=last_applied,
+                )
 
-            # ── Handle key events ──
-            if key_cb.quit_requested:
-                break
-
-            if key_cb.reset_requested:
-                key_cb.reset_requested = False
-                frame_idx = 0
-                finished = False
-                if args.mode == "action":
-                    mujoco.mj_resetData(model, data)
-                print(f"Restarted (frame 0/{demo.num_samples})")
-
-            if key_cb.speed_up:
-                key_cb.speed_up = False
-                speed = min(speed * 2.0, 32.0)
-                print(f"Speed: {speed:.2f}x")
-
-            if key_cb.speed_down:
-                key_cb.speed_down = False
-                speed = max(speed / 2.0, 0.0625)
-                print(f"Speed: {speed:.2f}x")
-
-            # ── Advance frame ──
-            advance = False
-            if key_cb.step_forward:
-                key_cb.step_forward = False
-                advance = True
-            elif not key_cb.paused and not finished:
-                advance = True
-
-            if advance and frame_idx < demo.num_samples:
-                apply_frame(frame_idx)
-
-                if frame_idx % 100 == 0 or frame_idx == demo.num_samples - 1:
-                    pct = 100.0 * frame_idx / max(demo.num_samples - 1, 1)
-                    t = demo.median_dt * frame_idx
-                    print(
-                        f"\rFrame {frame_idx:>5d}/{demo.num_samples}  "
-                        f"({pct:5.1f}%)  t={t:.2f}s  speed={speed:.2f}x",
-                        end="", flush=True,
-                    )
-
-                frame_idx += 1
-
-                if frame_idx >= demo.num_samples:
-                    if args.loop:
-                        frame_idx = 0
-                        if args.mode == "action":
-                            mujoco.mj_resetData(model, data)
-                        print("\n── Looping ──")
-                    else:
-                        finished = True
-                        print("\n── Playback finished (press R to restart) ──")
-
+            apply_frame(0)
+            refresh_traj_overlay()
             viewer.sync()
 
-            # ── Timing ──
-            elapsed = time.time() - loop_start
-            target_dt = demo.median_dt / speed if speed > 0 else demo.median_dt
-            if elapsed < target_dt:
-                time.sleep(target_dt - elapsed)
+            while viewer.is_running():
+                loop_start = time.time()
+
+                # ── Handle key events ──
+                if key_cb.quit_requested:
+                    break
+
+                if key_cb.reset_requested:
+                    key_cb.reset_requested = False
+                    frame_idx = 0
+                    finished = False
+                    if args.mode == "action":
+                        mujoco.mj_resetData(model, data)
+                    apply_frame(0)
+                    last_applied = 0
+                    refresh_traj_overlay()
+                    print(f"Restarted (frame 0/{demo.num_samples})")
+
+                if key_cb.speed_up:
+                    key_cb.speed_up = False
+                    speed = min(speed * 2.0, 32.0)
+                    print(f"Speed: {speed:.2f}x")
+
+                if key_cb.speed_down:
+                    key_cb.speed_down = False
+                    speed = max(speed / 2.0, 0.0625)
+                    print(f"Speed: {speed:.2f}x")
+
+                # ── Advance frame ──
+                advance = False
+                if key_cb.step_forward:
+                    key_cb.step_forward = False
+                    advance = True
+                elif not key_cb.paused and not finished:
+                    advance = True
+
+                if advance and frame_idx < demo.num_samples:
+                    apply_frame(frame_idx)
+                    last_applied = frame_idx
+                    refresh_traj_overlay()
+
+                    if frame_idx % 100 == 0 or frame_idx == demo.num_samples - 1:
+                        pct = 100.0 * frame_idx / max(demo.num_samples - 1, 1)
+                        t = demo.median_dt * frame_idx
+                        print(
+                            f"\rFrame {frame_idx:>5d}/{demo.num_samples}  "
+                            f"({pct:5.1f}%)  t={t:.2f}s  speed={speed:.2f}x",
+                            end="", flush=True,
+                        )
+
+                    frame_idx += 1
+
+                    if frame_idx >= demo.num_samples:
+                        if args.loop:
+                            frame_idx = 0
+                            if args.mode == "action":
+                                mujoco.mj_resetData(model, data)
+                            apply_frame(0)
+                            last_applied = 0
+                            refresh_traj_overlay()
+                            print("\n── Looping ──")
+                        else:
+                            finished = True
+                            print("\n── Playback finished (press R to restart) ──")
+
+                viewer.sync()
+
+                # ── Timing ──
+                elapsed = time.time() - loop_start
+                target_dt = demo.median_dt / speed if speed > 0 else demo.median_dt
+                if elapsed < target_dt:
+                    time.sleep(target_dt - elapsed)
+    finally:
+        if rgba_backup is not None:
+            pop_robot_alpha(model, rgba_backup)
 
     print("\nDone.")
 

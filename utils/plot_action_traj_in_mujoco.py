@@ -175,7 +175,12 @@ def add_trajectory(scn, positions, sphere_radius, line_radius, color_start, colo
     RGBA interpolates along the path; alpha is in the 4th channel of color_start/end.
     """
     N = positions.shape[0]
-    if N < 2:
+    if N < 1:
+        return
+    if N == 1:
+        rgba = np.asarray(color_start, dtype=np.float32)
+        r = marker_radius if marker_radius else sphere_radius
+        add_sphere(scn, positions[0], r, rgba)
         return
     idxs = list(range(0, N, max(1, subsample)))
     if idxs[-1] != N - 1:
@@ -333,9 +338,32 @@ def add_eef_trajectory_flat(
     )
 
 
-def add_all_trajectories(scn, trajectories, subsample=3):
-    """Add all FK trajectories to an MjvScene with color-coded gradient trails."""
+def add_all_trajectories(
+    scn,
+    trajectories,
+    subsample=3,
+    end_idx=None,
+    *,
+    clear_scene: bool = True,
+):
+    """
+    Add all FK trajectories to an MjvScene with color-coded gradient trails.
+
+    Args:
+        end_idx: If set, only draw each path from frame 0 through ``end_idx`` (inclusive).
+                 Use for growing trails during replay / video frames.
+        clear_scene: If True (default), set ``scn.ngeom = 0`` before drawing.
+            Use **True** for ``mujoco.viewer`` ``user_scn`` (robot is drawn separately).
+            Use **False** after ``Renderer.update_scene`` so model geoms are kept.
+    """
+    if clear_scene:
+        scn.ngeom = 0
     for name, traj in trajectories.items():
+        if end_idx is not None:
+            ei = int(end_idx)
+            if ei < 0:
+                continue
+            traj = traj[: ei + 1]
         is_eef = "eef" in name
         is_right = "right" in name
 
