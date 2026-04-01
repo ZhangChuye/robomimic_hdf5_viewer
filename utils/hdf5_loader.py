@@ -41,7 +41,11 @@ def load_demo(path, demo_key="demo_0"):
 
         if "actions" in demo:
             acts = demo["actions"]
-            d["actions_joint"] = _get(acts, "joint")
-            d["actions_eef"] = _get(acts, "eef")
+            if isinstance(acts, h5py.Group):
+                d["actions_joint"] = _get(acts, "joint")
+                d["actions_eef"] = _get(acts, "eef")
+            else:
+                # Flat dataset — treat entire array as joint actions
+                d["actions_joint"] = acts[:]
 
         return d
