@@ -204,8 +204,8 @@ def main():
     parser.add_argument("-o", "--output", type=str, default=None,
                         help="Output HTML path (default: <data_dir>/eef_trajectories_3d.html)")
     parser.add_argument("--xml", type=str, default=None)
-    parser.add_argument("--subsample", type=int, default=3,
-                        help="Keep every N-th frame for plotting (default 3)")
+    parser.add_argument("--subsample", type=int, default=1,
+                        help="Keep every N-th frame for plotting (default 1)")
     args = parser.parse_args()
 
     data_dir = Path(args.data_dir)

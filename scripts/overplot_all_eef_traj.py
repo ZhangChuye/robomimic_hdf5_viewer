@@ -88,7 +88,7 @@ def main():
     parser.add_argument(
         "--subsample",
         type=int,
-        default=6,
+        default=1,
         help="Sample every N-th frame — higher = fewer geoms when many demos (default 6)",
     )
     parser.add_argument("--robot_alpha", type=float, default=1.0)

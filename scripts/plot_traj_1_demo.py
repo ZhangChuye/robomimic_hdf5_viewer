@@ -58,8 +58,8 @@ def main():
                         help="Directory for saved PNGs (default: <hdf5_dir>/traj_viz/<stem>/<demo>)")
     parser.add_argument("--no_interactive", action="store_true",
                         help="Skip interactive viewer, only save PNGs")
-    parser.add_argument("--subsample", type=int, default=3,
-                        help="Draw every N-th frame (default 3)")
+    parser.add_argument("--subsample", type=int, default=1,
+                        help="Draw every N-th frame (default 1)")
     parser.add_argument("--all_links", action="store_true",
                         help="Plot all link trajectories (default: EEF only)")
     parser.add_argument(

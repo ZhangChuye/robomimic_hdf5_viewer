@@ -227,7 +227,7 @@ def main():
     parser.add_argument(
         "--subsample",
         type=int,
-        default=3,
+        default=1,
         help="Trajectory geometry: draw every N-th frame (default 3)",
     )
     parser.add_argument(

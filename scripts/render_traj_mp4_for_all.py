@@ -151,7 +151,7 @@ def main():
     parser.add_argument("--fps", type=float, default=None, help="Override FPS (default: from robot_ts)")
     parser.add_argument("--width", type=int, default=1920)
     parser.add_argument("--height", type=int, default=1080)
-    parser.add_argument("--subsample", type=int, default=3)
+    parser.add_argument("--subsample", type=int, default=1)
     parser.add_argument(
         "--robot_alpha",
         type=float,
