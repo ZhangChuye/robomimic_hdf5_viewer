@@ -1,4 +1,9 @@
 data
 assets
 *.pyc
+**/**.pyc
 *.hdf5
+**/__pycache__/**
+__pycache__/
+*.pyc
+*.pyo

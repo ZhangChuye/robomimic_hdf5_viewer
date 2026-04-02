@@ -2,8 +2,8 @@
 set -euo pipefail
 
 MAX_JOBS=2
-ENV_NAME="rby1"
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)/scripts"
+PYTHON_BIN="/coc/flash7/czhang883/miniconda3/envs/rby1/bin/python"
+SCRIPT_DIR="/coc/flash7/czhang883/Documents/robomimic_hdf5_viewer/scripts"
 export MUJOCO_GL=egl
 
 usage() {
@@ -16,7 +16,7 @@ log() {
 }
 
 run_py() {
-  conda run -n "$ENV_NAME" python "$@"
+  "$PYTHON_BIN" "$@"
 }
 
 get_demo_keys() {
@@ -41,7 +41,7 @@ process_folder() {
   fi
 
   start_ts=$(date +%s)
-  log "[START][PID $$] $data_dir"
+  log "[START] $data_dir"
 
   log "[STEP 1/5] generate_all_visualizations.py"
   run_py "$SCRIPT_DIR/generate_all_visualizations.py" "$data_dir"
@@ -59,13 +59,14 @@ process_folder() {
       stem="$(basename "$hdf5" .hdf5)"
       ((hdf5_count += 1))
 
+      local demos=()
       mapfile -t demos < <(get_demo_keys "$hdf5")
-      log "  [HDF5] $stem | demos=${#demos[@]}"
+      log "[HDF5] $stem | demos=${#demos[@]}"
 
       for dk in "${demos[@]}"; do
         local out_dir="$data_dir/traj_viz/$stem/$dk"
         ((demo_count += 1))
-        log "    [DEMO] $stem / $dk"
+        log "  [DEMO] $stem / $dk"
         run_py "$SCRIPT_DIR/plot_traj_1_demo.py" \
           "$hdf5" \
           --demo_key "$dk" \
@@ -90,9 +91,10 @@ process_folder() {
 
 main() {
   [[ "$#" -ge 1 ]] || usage
+  [[ -x "$PYTHON_BIN" ]] || { echo "Error: Python not executable: $PYTHON_BIN"; exit 1; }
 
   log "Pipeline start"
-  log "Folders: $# | MAX_JOBS=$MAX_JOBS | MUJOCO_GL=$MUJOCO_GL | ENV=$ENV_NAME"
+  log "Folders=$# | MAX_JOBS=$MAX_JOBS | PYTHON_BIN=$PYTHON_BIN | MUJOCO_GL=$MUJOCO_GL"
 
   local running=0
   local total=0
